@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Settings, Plus, Edit2, PencilLine, Trash2, CheckCircle2 } from 'lucide-react';
+import { Settings, Plus, PencilLine } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Service } from '../types';
 
@@ -150,7 +150,7 @@ export function Services() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {services.map((service) => (
+                {services.map((service: Service) => (
                     <div
                         key={service.id}
                         className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow group relative"

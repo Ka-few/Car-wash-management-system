@@ -7,6 +7,7 @@ import { ActiveJobs } from './pages/ActiveJobs';
 import { Checkout } from './pages/Checkout';
 import { Employees } from './pages/Employees';
 import { Services } from './pages/Services';
+import { Reports } from './pages/Reports';
 import './App.css';
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
       case 'checkout': return <Checkout preSelectedJobId={checkoutJobId} />;
       case 'employees': return <Employees />;
       case 'services': return <Services />;
+      case 'reports': return <Reports />;
       default: return <Dashboard />;
     }
   };

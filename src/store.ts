@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 interface AppState {
-    currentRoute: 'dashboard' | 'new_job' | 'active_jobs' | 'checkout' | 'employees' | 'services';
+    currentRoute: 'dashboard' | 'new_job' | 'active_jobs' | 'checkout' | 'employees' | 'services' | 'reports';
     setRoute: (route: AppState['currentRoute']) => void;
     isSidebarOpen: boolean;
     toggleSidebar: () => void;

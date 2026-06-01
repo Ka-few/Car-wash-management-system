@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CreditCard, Smartphone, Banknote, CheckCircle2, Car } from 'lucide-react';
+import { CreditCard, Smartphone, Banknote, CheckCircle2, Car, Printer } from 'lucide-react';
 import { api } from '../lib/api';
+import { pdfGen } from '../lib/pdf';
 import type { JobSummary } from '../types';
 
 const METHODS = [
@@ -161,6 +162,16 @@ export function Checkout({ preSelectedJobId }: { preSelectedJobId?: number }) {
                             >
                                 <CheckCircle2 className="w-5 h-5" />
                                 {loading ? 'Processing...' : `Confirm Payment — KES ${selectedJob.total_price.toLocaleString()}`}
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    console.log('Print Receipt clicked');
+                                    pdfGen.generateReceipt(selectedJob, method);
+                                }}
+                                className="w-full border border-slate-200 text-slate-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
+                            >
+                                <Printer className="w-4 h-4" /> Print Receipt
                             </button>
                         </div>
                     ) : (

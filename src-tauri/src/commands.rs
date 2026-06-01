@@ -37,6 +37,7 @@ pub struct JobSummary {
     pub id: i64,
     pub vehicle_plate: String,
     pub vehicle_type: String,
+    pub category: String,
     pub status: String,
     pub total_price: f64,
     pub created_at: String,
@@ -63,6 +64,46 @@ pub struct DashboardStats {
     pub top_service: String,
     pub unpaid_jobs: i64,
     pub month_revenue: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FinanceReport {
+    pub total_revenue: f64,
+    pub revenue_by_method: Vec<RevenueByMethod>,
+    pub revenue_by_category: Vec<RevenueByCategory>,
+    pub daily_revenue: Vec<DailyRevenue>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RevenueByMethod {
+    pub method: String,
+    pub amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RevenueByCategory {
+    pub category: String,
+    pub amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DailyRevenue {
+    pub date: String,
+    pub amount: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CommissionReport {
+    pub total_commission: f64,
+    pub staff_breakdown: Vec<StaffCommission>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StaffCommission {
+    pub employee_id: i64,
+    pub employee_name: String,
+    pub amount: f64,
+    pub job_count: i64,
 }
 
 // ─── Vehicles ────────────────────────────────────────────────────────────────
@@ -242,6 +283,7 @@ pub fn update_employee(
 pub fn create_job(
     db: State<AppState>,
     vehicle_id: i64,
+    category: String,
     service_ids: Vec<i64>,
     attendant_ids: Vec<i64>,
     service_prices: Vec<f64>,
@@ -250,8 +292,8 @@ pub fn create_job(
 
     let total_price: f64 = service_prices.iter().sum();
     conn.execute(
-        "INSERT INTO jobs (vehicle_id, status, total_price) VALUES (?1, 'Pending', ?2)",
-        rusqlite::params![vehicle_id, total_price],
+        "INSERT INTO jobs (vehicle_id, category, status, total_price) VALUES (?1, ?2, 'Pending', ?3)",
+        rusqlite::params![vehicle_id, category, total_price],
     )
     .map_err(|e| e.to_string())?;
     let job_id = conn.last_insert_rowid();
@@ -286,7 +328,7 @@ pub fn get_jobs(db: State<AppState>) -> Result<Vec<JobSummary>, String> {
     let conn = db.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT j.id, v.plate, v.type, j.status, j.total_price, j.created_at, j.paid_at
+            "SELECT j.id, v.plate, v.type, j.category, j.status, j.total_price, j.created_at, j.paid_at
          FROM jobs j JOIN vehicles v ON j.vehicle_id = v.id
          ORDER BY j.created_at DESC",
         )
@@ -298,10 +340,11 @@ pub fn get_jobs(db: State<AppState>) -> Result<Vec<JobSummary>, String> {
                 id: row.get(0)?,
                 vehicle_plate: row.get(1)?,
                 vehicle_type: row.get(2)?,
-                status: row.get(3)?,
-                total_price: row.get(4)?,
-                created_at: row.get(5)?,
-                paid_at: row.get(6)?,
+                category: row.get(3)?,
+                status: row.get(4)?,
+                total_price: row.get(5)?,
+                created_at: row.get(6)?,
+                paid_at: row.get(7)?,
                 services: vec![],
                 attendants: vec![],
             })
@@ -428,5 +471,131 @@ pub fn get_dashboard_stats(db: State<AppState>) -> Result<DashboardStats, String
         top_service,
         unpaid_jobs,
         month_revenue,
+    })
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_finance_report(
+    db: State<AppState>,
+    start_date: String,
+    end_date: String,
+) -> Result<FinanceReport, String> {
+    let conn = db.db.lock().map_err(|e| e.to_string())?;
+
+    let total_revenue: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE DATE(recorded_at) BETWEEN ?1 AND ?2",
+            rusqlite::params![start_date, end_date],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT method, SUM(amount) FROM payments 
+             WHERE DATE(recorded_at) BETWEEN ?1 AND ?2 GROUP BY method",
+        )
+        .map_err(|e| e.to_string())?;
+    let revenue_by_method = stmt
+        .query_map(rusqlite::params![start_date, end_date], |row| {
+            Ok(RevenueByMethod {
+                method: row.get(0)?,
+                amount: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT j.category, SUM(p.amount) FROM payments p 
+             JOIN jobs j ON p.job_id = j.id 
+             WHERE DATE(p.recorded_at) BETWEEN ?1 AND ?2 GROUP BY j.category",
+        )
+        .map_err(|e| e.to_string())?;
+    let revenue_by_category = stmt
+        .query_map(rusqlite::params![start_date, end_date], |row| {
+            Ok(RevenueByCategory {
+                category: row.get(0)?,
+                amount: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT DATE(recorded_at), SUM(amount) FROM payments 
+             WHERE DATE(recorded_at) BETWEEN ?1 AND ?2 
+             GROUP BY DATE(recorded_at) ORDER BY DATE(recorded_at) ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let daily_revenue = stmt
+        .query_map(rusqlite::params![start_date, end_date], |row| {
+            Ok(DailyRevenue {
+                date: row.get(0)?,
+                amount: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(FinanceReport {
+        total_revenue,
+        revenue_by_method,
+        revenue_by_category,
+        daily_revenue,
+    })
+}
+
+#[tauri::command]
+pub fn get_commission_report(
+    db: State<AppState>,
+    start_date: String,
+    end_date: String,
+) -> Result<CommissionReport, String> {
+    let conn = db.db.lock().map_err(|e| e.to_string())?;
+
+    let total_commission: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(ja.commission_amount), 0) FROM job_attendants ja 
+             JOIN jobs j ON ja.job_id = j.id 
+             WHERE DATE(j.created_at) BETWEEN ?1 AND ?2",
+            rusqlite::params![start_date, end_date],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT e.id, e.name, SUM(ja.commission_amount), COUNT(ja.job_id) 
+             FROM job_attendants ja 
+             JOIN employees e ON ja.employee_id = e.id 
+             JOIN jobs j ON ja.job_id = j.id 
+             WHERE DATE(j.created_at) BETWEEN ?1 AND ?2 
+             GROUP BY e.id",
+        )
+        .map_err(|e| e.to_string())?;
+    let staff_breakdown = stmt
+        .query_map(rusqlite::params![start_date, end_date], |row| {
+            Ok(StaffCommission {
+                employee_id: row.get(0)?,
+                employee_name: row.get(1)?,
+                amount: row.get(2)?,
+                job_count: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(CommissionReport {
+        total_commission,
+        staff_breakdown,
     })
 }

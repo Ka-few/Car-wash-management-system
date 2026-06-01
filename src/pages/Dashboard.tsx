@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    TrendingUp, Car, Clock, AlertCircle, DollarSign, Star
+    TrendingUp, Car, Clock, AlertCircle, DollarSign, Star, Grid, Tent
 } from 'lucide-react';
 import { api } from '../lib/api';
 import type { DashboardStats, JobSummary } from '../types';
@@ -147,19 +147,25 @@ export function Dashboard() {
                     </div>
                 ) : (
                     <div className="divide-y divide-slate-100">
-                        {recentJobs.map((job) => (
-                            <div key={job.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-bold font-mono text-slate-800">{job.vehicle_plate}</p>
-                                    <p className="text-sm text-slate-500 truncate">{job.services.join(' · ')}</p>
+                        {recentJobs.map((job) => {
+                            const Icon = job.category === 'Carpet' ? Grid : job.category === 'Tent' ? Tent : Car;
+                            return (
+                                <div key={job.id} className="px-6 py-4 flex items-center gap-4 hover:bg-slate-50 transition-colors">
+                                    <div className="p-2 bg-slate-50 rounded-lg">
+                                        <Icon className="w-5 h-5 text-slate-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-bold font-mono text-slate-800">{job.vehicle_plate}</p>
+                                        <p className="text-sm text-slate-500 truncate">{job.services.join(' · ')}</p>
+                                    </div>
+                                    <div className="hidden md:block text-sm text-slate-400">{fmtDate(job.created_at)}</div>
+                                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${STATUS_COLOR[job.status]}`}>
+                                        {job.status}
+                                    </span>
+                                    <span className="font-bold text-slate-700">{fmt(job.total_price)}</span>
                                 </div>
-                                <div className="hidden md:block text-sm text-slate-400">{fmtDate(job.created_at)}</div>
-                                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${STATUS_COLOR[job.status]}`}>
-                                    {job.status}
-                                </span>
-                                <span className="font-bold text-slate-700">{fmt(job.total_price)}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

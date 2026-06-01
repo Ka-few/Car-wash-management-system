@@ -37,6 +37,7 @@ export interface JobSummary {
     id: number;
     vehicle_plate: string;
     vehicle_type: string;
+    category: string;
     status: 'Pending' | 'In Progress' | 'Completed' | 'Paid';
     total_price: number;
     created_at: string;
@@ -52,4 +53,21 @@ export interface DashboardStats {
     top_service: string;
     unpaid_jobs: number;
     month_revenue: number;
+}
+
+export interface FinanceReport {
+    total_revenue: number;
+    revenue_by_method: { method: string; amount: number }[];
+    revenue_by_category: { category: string; amount: number }[];
+    daily_revenue: { date: string; amount: number }[];
+}
+
+export interface CommissionReport {
+    total_commission: number;
+    staff_breakdown: {
+        employee_id: number;
+        employee_name: string;
+        amount: number;
+        job_count: number;
+    }[];
 }

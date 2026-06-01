@@ -2,7 +2,10 @@ use rusqlite::{Connection, Result};
 use tauri::Manager;
 
 pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Connection, rusqlite::Error> {
-    let app_dir = app_handle.path().app_data_dir().expect("The app data directory should exist.");
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .expect("The app data directory should exist.");
     std::fs::create_dir_all(&app_dir).expect("The app data directory should be created.");
     let sqlite_path = app_dir.join("safiauto_v1.sqlite");
 
@@ -13,7 +16,7 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Connection, 
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA foreign_keys = ON;
-        "
+        ",
     )?;
 
     // Create tables
@@ -46,6 +49,7 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Connection, 
         CREATE TABLE IF NOT EXISTS jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             vehicle_id INTEGER NOT NULL,
+            category TEXT NOT NULL DEFAULT 'Car',
             status TEXT NOT NULL DEFAULT 'Pending',
             total_price REAL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -80,7 +84,7 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Connection, 
             recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (job_id) REFERENCES jobs(id)
         );
-        "
+        ",
     )?;
 
     // Initial seed data for services if empty
@@ -97,6 +101,23 @@ pub fn initialize_database(app_handle: &tauri::AppHandle) -> Result<Connection, 
             INSERT INTO services (name, base_price, description) VALUES ('Carpet Wash', 1200, 'Deep cleaning of floor mats and carpets');
             INSERT INTO services (name, base_price, description) VALUES ('Tent Wash', 2000, 'Large-scale canvas/tent fabric cleaning');
             "
+        )?;
+    }
+
+    // Migration: Add category column to jobs if missing
+    let has_category: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name = 'category'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
+        .unwrap_or(false);
+
+    if !has_category {
+        conn.execute(
+            "ALTER TABLE jobs ADD COLUMN category TEXT NOT NULL DEFAULT 'Car'",
+            [],
         )?;
     }
 

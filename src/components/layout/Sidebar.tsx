@@ -1,4 +1,4 @@
-import { Car, LayoutDashboard, PlusCircle, Users, CreditCard, Settings } from 'lucide-react';
+import { Car, LayoutDashboard, PlusCircle, Users, CreditCard, Settings, TrendingUp } from 'lucide-react';
 import { useAppStore } from '../../store';
 
 export function Sidebar() {
@@ -9,6 +9,7 @@ export function Sidebar() {
         { id: 'new_job', label: 'New Job', icon: PlusCircle },
         { id: 'active_jobs', label: 'Job Board', icon: Car },
         { id: 'checkout', label: 'Checkout', icon: CreditCard },
+        { id: 'reports', label: 'Reports', icon: TrendingUp },
         { id: 'employees', label: 'Staff', icon: Users },
         { id: 'services', label: 'Services', icon: Settings },
     ] as const;

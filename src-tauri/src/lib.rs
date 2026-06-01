@@ -36,6 +36,8 @@ pub fn run() {
             update_job_status,
             process_payment,
             get_dashboard_stats,
+            get_finance_report,
+            get_commission_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

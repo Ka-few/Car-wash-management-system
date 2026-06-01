@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Car, ChevronRight, RefreshCw } from 'lucide-react';
+import { Car, ChevronRight, RefreshCw, Grid, Tent } from 'lucide-react';
 import { api } from '../lib/api';
 import type { JobSummary } from '../types';
 
@@ -49,10 +49,15 @@ function JobCard({ job, onAdvance }: { job: JobSummary; onAdvance: (id: number, 
     const st = job.status as ActiveStatus;
     const styles = STATUS_STYLE[st];
     const next = NEXT_STATUS[st];
+    const Icon = job.category === 'Carpet' ? Grid : job.category === 'Tent' ? Tent : Car;
+
     return (
         <div className={`border rounded-2xl p-4 space-y-3 ${styles.col} hover:shadow-sm transition-shadow`}>
             <div className="flex justify-between items-start">
-                <span className="font-mono font-bold text-lg text-slate-800">{job.vehicle_plate}</span>
+                <div className="flex items-center gap-2">
+                    <Icon className="w-5 h-5 text-slate-400" />
+                    <span className="font-mono font-bold text-lg text-slate-800">{job.vehicle_plate}</span>
+                </div>
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${styles.badge}`}>{job.status}</span>
             </div>
             <div>

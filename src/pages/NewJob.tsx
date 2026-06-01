@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, User, Phone, Car } from 'lucide-react';
+import { CheckCircle, User, Phone, Car, Grid, Tent } from 'lucide-react';
 import { api } from '../lib/api';
 import type { Service, EmployeeSummary } from '../types';
 import { useAppStore } from '../store';
@@ -7,6 +7,7 @@ import { useAppStore } from '../store';
 export function NewJob() {
     const [services, setServices] = useState<Service[]>([]);
     const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
+    const [jobCategory, setJobCategory] = useState<'Car' | 'Carpet' | 'Tent'>('Car');
     const [plate, setPlate] = useState('');
     const [vehicleType, setVehicleType] = useState('Sedan');
     const [ownerName, setOwnerName] = useState('');
@@ -43,9 +44,9 @@ export function NewJob() {
             const vehicleId = await api.createVehicle(plate, vehicleType, ownerName || undefined, ownerPhone || undefined);
             const serviceIds = selectedServices;
             const servicePrices = serviceIds.map((sId) => services.find((s) => s.id === sId)?.base_price ?? 0);
-            await api.createJob(vehicleId, serviceIds, selectedAttendants, servicePrices);
+            await api.createJob(vehicleId, jobCategory, serviceIds, selectedAttendants, servicePrices);
             setToast('Job created successfully!');
-            setTimeout(() => { setToast(''); setRoute('active_jobs'); }, 1500);
+            setTimeout(() => { setToast(''); setRoute('active_jobs'); }, 500);
         } catch (e: unknown) {
             setToast(`Error: ${e}`);
             setLoading(false);
@@ -61,8 +62,8 @@ export function NewJob() {
             )}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Register Vehicle</h1>
-                    <p className="text-slate-500 mt-1">Ingiza gari mpya (New vehicle intake)</p>
+                    <h1 className="text-3xl font-bold text-slate-800 tracking-tight">New Intake</h1>
+                    <p className="text-slate-500 mt-1">Sajili kazi mpya (Register new job)</p>
                 </div>
                 <button
                     onClick={handleSubmit}
@@ -77,31 +78,63 @@ export function NewJob() {
                 <div className="lg:col-span-2 space-y-6">
                     {/* Vehicle form */}
                     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                        <h2 className="text-lg font-semibold text-slate-800 mb-5 flex items-center gap-2">
-                            <Car className="w-5 h-5 text-accent" /> Vehicle Information
-                        </h2>
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                                <Car className="w-5 h-5 text-accent" /> {jobCategory} Information
+                            </h2>
+                            <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                                {(['Car', 'Carpet', 'Tent'] as const).map((cat) => {
+                                    const CatIcon = cat === 'Carpet' ? Grid : cat === 'Tent' ? Tent : Car;
+                                    return (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setJobCategory(cat)}
+                                            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${jobCategory === cat ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            <CatIcon className="w-4 h-4" />
+                                            {cat}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-slate-600">Plate Number *</label>
+                                <label className="text-sm font-medium text-slate-600">
+                                    {jobCategory === 'Car' ? 'Plate Number *' : 'Reference / Tag ID *'}
+                                </label>
                                 <input
                                     type="text"
                                     value={plate}
                                     onChange={(e) => setPlate(e.target.value.toUpperCase())}
-                                    placeholder="KCA 123G"
+                                    placeholder={jobCategory === 'Car' ? 'KCA 123G' : 'TAG-001'}
                                     className="w-full uppercase tracking-widest px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-accent focus:outline-none font-mono text-lg"
                                     required
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-slate-600">Vehicle Type</label>
+                                <label className="text-sm font-medium text-slate-600">
+                                    {jobCategory === 'Car' ? 'Vehicle Type' : jobCategory + ' Size/Type'}
+                                </label>
                                 <select
                                     value={vehicleType}
                                     onChange={(e) => setVehicleType(e.target.value)}
                                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-accent focus:outline-none"
                                 >
-                                    {['Sedan', 'SUV', 'Pickup', 'Van', 'Matatu', 'Truck', 'Other'].map((t) => (
-                                        <option key={t}>{t}</option>
-                                    ))}
+                                    {jobCategory === 'Car' ? (
+                                        ['Sedan', 'SUV', 'Pickup', 'Van', 'Matatu', 'Truck', 'Other'].map((t) => (
+                                            <option key={t}>{t}</option>
+                                        ))
+                                    ) : jobCategory === 'Carpet' ? (
+                                        ['Small (up to 4x6)', 'Medium (5x8)', 'Large (8x10)', 'Extra Large', 'Runner', 'Other'].map((t) => (
+                                            <option key={t}>{t}</option>
+                                        ))
+                                    ) : (
+                                        ['Small (2-man)', 'Medium (Family)', 'Large (Event)', 'Gazebo', 'Other'].map((t) => (
+                                            <option key={t}>{t}</option>
+                                        ))
+                                    )}
                                 </select>
                             </div>
                             <div className="space-y-1.5">
