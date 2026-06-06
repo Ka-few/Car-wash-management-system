@@ -1,7 +1,7 @@
 use crate::AppState;
 use rusqlite::Result;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +35,7 @@ pub struct Employee {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JobSummary {
     pub id: i64,
+    pub vehicle_id: i64,
     pub vehicle_plate: String,
     pub vehicle_type: String,
     pub category: String,
@@ -42,7 +43,9 @@ pub struct JobSummary {
     pub total_price: f64,
     pub created_at: String,
     pub paid_at: Option<String>,
+    pub service_ids: Vec<i64>,
     pub services: Vec<String>,
+    pub attendant_ids: Vec<i64>,
     pub attendants: Vec<String>,
 }
 
@@ -104,6 +107,48 @@ pub struct StaffCommission {
     pub employee_name: String,
     pub amount: f64,
     pub job_count: i64,
+    pub jobs: Vec<StaffCommissionJob>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StaffCommissionJob {
+    pub job_id: i64,
+    pub vehicle_plate: String,
+    pub services: String,
+    pub date: String,
+    pub amount: f64,
+}
+
+#[tauri::command]
+pub fn save_pdf_file(
+    app: tauri::AppHandle,
+    filename: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let safe_filename: String = filename
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => ch,
+        })
+        .collect();
+    let safe_filename = safe_filename.trim().trim_matches('.').to_string();
+    let filename = if safe_filename.to_lowercase().ends_with(".pdf") {
+        safe_filename
+    } else {
+        format!("{safe_filename}.pdf")
+    };
+
+    let reports_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("reports");
+    std::fs::create_dir_all(&reports_dir).map_err(|e| e.to_string())?;
+
+    let path = reports_dir.join(filename);
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 // ─── Vehicles ────────────────────────────────────────────────────────────────
@@ -328,7 +373,7 @@ pub fn get_jobs(db: State<AppState>) -> Result<Vec<JobSummary>, String> {
     let conn = db.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT j.id, v.plate, v.type, j.category, j.status, j.total_price, j.created_at, j.paid_at
+            "SELECT j.id, j.vehicle_id, v.plate, v.type, j.category, j.status, j.total_price, j.created_at, j.paid_at
          FROM jobs j JOIN vehicles v ON j.vehicle_id = v.id
          ORDER BY j.created_at DESC",
         )
@@ -338,14 +383,17 @@ pub fn get_jobs(db: State<AppState>) -> Result<Vec<JobSummary>, String> {
         .query_map([], |row| {
             Ok(JobSummary {
                 id: row.get(0)?,
-                vehicle_plate: row.get(1)?,
-                vehicle_type: row.get(2)?,
-                category: row.get(3)?,
-                status: row.get(4)?,
-                total_price: row.get(5)?,
-                created_at: row.get(6)?,
-                paid_at: row.get(7)?,
+                vehicle_id: row.get(1)?,
+                vehicle_plate: row.get(2)?,
+                vehicle_type: row.get(3)?,
+                category: row.get(4)?,
+                status: row.get(5)?,
+                total_price: row.get(6)?,
+                created_at: row.get(7)?,
+                paid_at: row.get(8)?,
+                service_ids: vec![],
                 services: vec![],
+                attendant_ids: vec![],
                 attendants: vec![],
             })
         })
@@ -355,24 +403,132 @@ pub fn get_jobs(db: State<AppState>) -> Result<Vec<JobSummary>, String> {
 
     for job in &mut jobs {
         let mut svc_stmt = conn.prepare(
-            "SELECT s.name FROM job_services js JOIN services s ON js.service_id = s.id WHERE js.job_id = ?1"
+            "SELECT s.id, s.name FROM job_services js JOIN services s ON js.service_id = s.id WHERE js.job_id = ?1"
         ).map_err(|e| e.to_string())?;
-        job.services = svc_stmt
-            .query_map([job.id], |row| row.get(0))
+        let service_rows: Vec<(i64, String)> = svc_stmt
+            .query_map([job.id], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
+        job.service_ids = service_rows.iter().map(|(id, _)| *id).collect();
+        job.services = service_rows.into_iter().map(|(_, name)| name).collect();
 
         let mut att_stmt = conn.prepare(
-            "SELECT e.name FROM job_attendants ja JOIN employees e ON ja.employee_id = e.id WHERE ja.job_id = ?1"
+            "SELECT e.id, e.name FROM job_attendants ja JOIN employees e ON ja.employee_id = e.id WHERE ja.job_id = ?1"
         ).map_err(|e| e.to_string())?;
-        job.attendants = att_stmt
-            .query_map([job.id], |row| row.get(0))
+        let attendant_rows: Vec<(i64, String)> = att_stmt
+            .query_map([job.id], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
+        job.attendant_ids = attendant_rows.iter().map(|(id, _)| *id).collect();
+        job.attendants = attendant_rows.into_iter().map(|(_, name)| name).collect();
     }
     Ok(jobs)
+}
+
+#[tauri::command]
+pub fn update_job(
+    db: State<AppState>,
+    job_id: i64,
+    _vehicle_id: i64,
+    plate: String,
+    vehicle_type: String,
+    category: String,
+    service_ids: Vec<i64>,
+    attendant_ids: Vec<i64>,
+    service_prices: Vec<f64>,
+) -> Result<(), String> {
+    if service_ids.is_empty() {
+        return Err("Select at least one service.".to_string());
+    }
+
+    let mut conn = db.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let total_price: f64 = service_prices.iter().sum();
+    let normalized_plate = plate.to_uppercase();
+
+    tx.execute(
+        "INSERT OR IGNORE INTO vehicles (plate, type) VALUES (?1, ?2)",
+        rusqlite::params![normalized_plate, vehicle_type],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE vehicles SET type = ?1 WHERE plate = ?2",
+        rusqlite::params![vehicle_type, normalized_plate],
+    )
+    .map_err(|e| e.to_string())?;
+    let new_vehicle_id: i64 = tx
+        .query_row(
+            "SELECT id FROM vehicles WHERE plate = ?1",
+            rusqlite::params![normalized_plate],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE jobs SET vehicle_id = ?1, category = ?2, total_price = ?3 WHERE id = ?4",
+        rusqlite::params![new_vehicle_id, category, total_price, job_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM job_services WHERE job_id = ?1",
+        rusqlite::params![job_id],
+    )
+    .map_err(|e| e.to_string())?;
+    for (idx, &service_id) in service_ids.iter().enumerate() {
+        let price = service_prices.get(idx).copied().unwrap_or(0.0);
+        tx.execute(
+            "INSERT INTO job_services (job_id, service_id, price_at_time) VALUES (?1, ?2, ?3)",
+            rusqlite::params![job_id, service_id, price],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    tx.execute(
+        "DELETE FROM job_attendants WHERE job_id = ?1",
+        rusqlite::params![job_id],
+    )
+    .map_err(|e| e.to_string())?;
+    if !attendant_ids.is_empty() {
+        let commission_rate: f64 = 0.30;
+        let commission_per_attendant = (total_price * commission_rate) / attendant_ids.len() as f64;
+        for &employee_id in &attendant_ids {
+            tx.execute(
+                "INSERT INTO job_attendants (job_id, employee_id, commission_rate, commission_amount) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![job_id, employee_id, commission_rate, commission_per_attendant],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_job(db: State<AppState>, job_id: i64) -> Result<(), String> {
+    let mut conn = db.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM payments WHERE job_id = ?1", rusqlite::params![job_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM job_attendants WHERE job_id = ?1",
+        rusqlite::params![job_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM job_services WHERE job_id = ?1",
+        rusqlite::params![job_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM jobs WHERE id = ?1", rusqlite::params![job_id])
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -581,18 +737,53 @@ pub fn get_commission_report(
              GROUP BY e.id",
         )
         .map_err(|e| e.to_string())?;
-    let staff_breakdown = stmt
+    let mut staff_breakdown: Vec<StaffCommission> = stmt
         .query_map(rusqlite::params![start_date, end_date], |row| {
             Ok(StaffCommission {
                 employee_id: row.get(0)?,
                 employee_name: row.get(1)?,
                 amount: row.get(2)?,
                 job_count: row.get(3)?,
+                jobs: vec![],
             })
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
+
+    for staff in &mut staff_breakdown {
+        let mut jobs_stmt = conn
+            .prepare(
+                "SELECT j.id, v.plate, DATE(j.created_at), ja.commission_amount,
+                    COALESCE(GROUP_CONCAT(s.name, ', '), 'No services')
+                 FROM job_attendants ja
+                 JOIN jobs j ON ja.job_id = j.id
+                 JOIN vehicles v ON j.vehicle_id = v.id
+                 LEFT JOIN job_services js ON js.job_id = j.id
+                 LEFT JOIN services s ON js.service_id = s.id
+                 WHERE ja.employee_id = ?1 AND DATE(j.created_at) BETWEEN ?2 AND ?3
+                 GROUP BY j.id, v.plate, j.created_at, ja.commission_amount
+                 ORDER BY j.created_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+
+        staff.jobs = jobs_stmt
+            .query_map(
+                rusqlite::params![staff.employee_id, start_date, end_date],
+                |row| {
+                    Ok(StaffCommissionJob {
+                        job_id: row.get(0)?,
+                        vehicle_plate: row.get(1)?,
+                        date: row.get(2)?,
+                        amount: row.get(3)?,
+                        services: row.get(4)?,
+                    })
+                },
+            )
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+    }
 
     Ok(CommissionReport {
         total_commission,

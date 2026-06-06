@@ -1,11 +1,26 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { invoke } from '@tauri-apps/api/core';
+import { openPath } from '@tauri-apps/plugin-opener';
 import type { FinanceReport, CommissionReport, JobSummary } from '../types';
 
 const fmt = (n: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n);
 
+async function saveAndOpenPdf(doc: jsPDF, filename: string) {
+    const buffer = doc.output('arraybuffer');
+    const bytes = Array.from(new Uint8Array(buffer));
+    const savedPath = await invoke<string>('save_pdf_file', { filename, bytes });
+
+    try {
+        await openPath(savedPath);
+    } catch (error) {
+        console.warn('PDF saved, but could not be opened automatically:', error);
+        alert(`PDF saved to:\n${savedPath}`);
+    }
+}
+
 export const pdfGen = {
-    generateReceipt: (job: JobSummary, method: string) => {
+    generateReceipt: async (job: JobSummary, method: string) => {
         console.log('Generating Receipt for job:', job.id);
         try {
             const doc = new jsPDF({ format: [80, 150], unit: 'mm' }); // Receipt size
@@ -25,13 +40,14 @@ export const pdfGen = {
             doc.text(`Date: ${new Date().toLocaleString()}`, 10, 37);
             doc.text(`Vehicle: ${job.vehicle_plate}`, 10, 42);
             doc.text(`Method: ${method}`, 10, 47);
-            doc.line(10, 52, 70, 52);
+            doc.text(`Attendant: ${job.attendants.join(', ') || 'N/A'}`, 10, 52);
+            doc.line(10, 57, 70, 57);
 
             // Services
             doc.setFont('helvetica', 'bold');
-            doc.text('Services:', 10, 58);
+            doc.text('Services:', 10, 63);
             doc.setFont('helvetica', 'normal');
-            let y = 64;
+            let y = 69;
             job.services.forEach(s => {
                 doc.text(s, 12, y);
                 y += 5;
@@ -47,14 +63,14 @@ export const pdfGen = {
             doc.setFont('helvetica', 'italic');
             doc.text('Thank you for choosing SafiAuto!', 40, y + 18, { align: 'center' });
 
-            doc.save(`Receipt_${job.vehicle_plate}_${job.id}.pdf`);
+            await saveAndOpenPdf(doc, `Receipt_${job.vehicle_plate}_${job.id}.pdf`);
         } catch (error: any) {
             console.error('Failed to generate Receipt PDF:', error);
             alert(`Failed to generate Receipt PDF: ${error?.message || error}`);
         }
     },
 
-    generateFinanceReport: (data: FinanceReport, startDate: string, endDate: string) => {
+    generateFinanceReport: async (data: FinanceReport, startDate: string, endDate: string) => {
         console.log('Generating Finance Report PDF...');
         try {
             const doc = new jsPDF();
@@ -76,14 +92,14 @@ export const pdfGen = {
                 headStyles: { fillColor: [241, 245, 249], textColor: 0, fontStyle: 'bold' }
             });
 
-            doc.save(`Finance_Report_${startDate}_${endDate}.pdf`);
+            await saveAndOpenPdf(doc, `Finance_Report_${startDate}_${endDate}.pdf`);
         } catch (error: any) {
             console.error('Failed to generate Finance PDF:', error);
             alert(`Failed to generate Finance PDF: ${error?.message || error}`);
         }
     },
 
-    generateCommissionReport: (data: CommissionReport, startDate: string, endDate: string) => {
+    generateCommissionReport: async (data: CommissionReport, startDate: string, endDate: string) => {
         console.log('Generating Commission Report PDF...');
         try {
             const doc = new jsPDF();
@@ -98,12 +114,16 @@ export const pdfGen = {
 
             autoTable(doc, {
                 startY: 55,
-                head: [['Employee', 'Jobs', 'Earned (KES)']],
-                body: data.staff_breakdown.map(s => [s.employee_name, s.job_count.toString(), fmt(s.amount)]),
+                head: [['Attendant', 'Date', 'Job', 'Vehicle', 'Services', 'Earned (KES)']],
+                body: data.staff_breakdown.flatMap(s =>
+                    s.jobs.length > 0
+                        ? s.jobs.map(job => [s.employee_name, job.date, `#${job.job_id}`, job.vehicle_plate, job.services, fmt(job.amount)])
+                        : [[s.employee_name, '-', `${s.job_count} jobs`, '-', '-', fmt(s.amount)]]
+                ),
                 theme: 'grid'
             });
 
-            doc.save(`Commission_Report_${startDate}_${endDate}.pdf`);
+            await saveAndOpenPdf(doc, `Commission_Report_${startDate}_${endDate}.pdf`);
         } catch (error: any) {
             console.error('Failed to generate Commission PDF:', error);
             alert(`Failed to generate Commission PDF: ${error?.message || error}`);

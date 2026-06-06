@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { CreditCard, Smartphone, Banknote, CheckCircle2, Car, Printer } from 'lucide-react';
+import { CreditCard, Smartphone, Banknote, CheckCircle2, Car, Printer, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { pdfGen } from '../lib/pdf';
 import type { JobSummary } from '../types';
@@ -26,6 +26,7 @@ export function Checkout({ preSelectedJobId }: { preSelectedJobId?: number }) {
     const [method, setMethod] = useState<'Cash' | 'M-Pesa' | 'Card'>('Cash');
     const [loading, setLoading] = useState(false);
     const [toast, setToast] = useState('');
+    const [showReceiptPopup, setShowReceiptPopup] = useState(false);
 
     const load = useCallback(() => {
         api.getJobs()
@@ -47,6 +48,7 @@ export function Checkout({ preSelectedJobId }: { preSelectedJobId?: number }) {
         setLoading(true);
         try {
             await api.processPayment(selectedJob.id, selectedJob.total_price, method);
+            await pdfGen.generateReceipt(selectedJob, method);
             setToast(`Payment of KES ${selectedJob.total_price.toLocaleString()} recorded!`);
             setSelectedJob(null);
             load();
@@ -165,10 +167,7 @@ export function Checkout({ preSelectedJobId }: { preSelectedJobId?: number }) {
                             </button>
 
                             <button
-                                onClick={() => {
-                                    console.log('Print Receipt clicked');
-                                    pdfGen.generateReceipt(selectedJob, method);
-                                }}
+                                onClick={() => setShowReceiptPopup(true)}
                                 className="w-full border border-slate-200 text-slate-600 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-slate-50 transition-colors"
                             >
                                 <Printer className="w-4 h-4" /> Print Receipt
@@ -183,6 +182,80 @@ export function Checkout({ preSelectedJobId }: { preSelectedJobId?: number }) {
                     )}
                 </div>
             </div>
+
+            {showReceiptPopup && selectedJob && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                    <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                                    <Printer className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="font-bold text-slate-800">Receipt Preview</h2>
+                                    <p className="text-xs text-slate-500">Receipt #{selectedJob.id}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowReceiptPopup(false)}
+                                className="h-9 w-9 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center"
+                                aria-label="Close receipt popup"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                                <div className="text-center border-b border-slate-200 pb-3">
+                                    <p className="text-lg font-black text-slate-800">SAFIAUTO WASH</p>
+                                    <p className="text-xs text-slate-500">Clean. Professional. Fast.</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                        <p className="text-slate-400">Vehicle</p>
+                                        <p className="font-bold text-slate-800">{selectedJob.vehicle_plate}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400">Payment</p>
+                                        <p className="font-bold text-slate-800">{method}</p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-slate-400">Date</p>
+                                        <p className="font-medium text-slate-700">{fmtDate(selectedJob.created_at)}</p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-slate-400">Attendant</p>
+                                        <p className="font-bold text-slate-800">{selectedJob.attendants.join(', ') || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <div className="border-t border-slate-200 pt-3 space-y-2">
+                                    {selectedJob.services.map((service, index) => (
+                                        <div key={`${service}-${index}`} className="text-sm text-slate-600">
+                                            {service}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="border-t border-slate-200 pt-3 flex items-center justify-between">
+                                    <span className="font-bold text-slate-800">Total</span>
+                                    <span className="text-xl font-black text-accent">KES {selectedJob.total_price.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={async () => {
+                                    console.log('Print Receipt clicked');
+                                    await pdfGen.generateReceipt(selectedJob, method);
+                                    setShowReceiptPopup(false);
+                                }}
+                                className="w-full bg-accent hover:bg-yellow-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <Printer className="w-5 h-5" /> Print Receipt
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

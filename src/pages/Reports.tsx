@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    FileText, Calendar, TrendingUp, Download, PieChart, Users, DollarSign, ArrowUpRight
+    FileText, Calendar, TrendingUp, Download, PieChart, Users, DollarSign, ArrowUpRight, Printer, X
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { pdfGen } from '../lib/pdf';
@@ -13,6 +13,7 @@ export function Reports() {
     const [financeData, setFinanceData] = useState<FinanceReport | null>(null);
     const [commissionData, setCommissionData] = useState<CommissionReport | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showReportPopup, setShowReportPopup] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -36,6 +37,19 @@ export function Reports() {
     }, [activeTab, startDate, endDate]);
 
     const fmt = (n: number) => new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES' }).format(n);
+    const reportTitle = activeTab === 'finance' ? 'Financial Performance Report' : 'Commission Payout Report';
+    const activeData = activeTab === 'finance' ? financeData : commissionData;
+
+    const handlePrintReport = async () => {
+        if (activeTab === 'finance') {
+            if (!financeData) { alert('No finance data loaded yet. Please click Refresh.'); return; }
+            await pdfGen.generateFinanceReport(financeData, startDate, endDate);
+        } else {
+            if (!commissionData) { alert('No commission data loaded yet. Please click Refresh.'); return; }
+            await pdfGen.generateCommissionReport(commissionData, startDate, endDate);
+        }
+        setShowReportPopup(false);
+    };
 
     return (
         <div className="space-y-6">
@@ -86,14 +100,9 @@ export function Reports() {
                 <button
                     disabled={loading}
                     onClick={() => {
-                        console.log('Export PDF clicked', { activeTab, hasFinance: !!financeData, hasComm: !!commissionData });
-                        if (activeTab === 'finance') {
-                            if (!financeData) { alert('No finance data loaded yet. Please click Refresh.'); return; }
-                            pdfGen.generateFinanceReport(financeData, startDate, endDate);
-                        } else if (activeTab === 'commission') {
-                            if (!commissionData) { alert('No commission data loaded yet. Please click Refresh.'); return; }
-                            pdfGen.generateCommissionReport(commissionData, startDate, endDate);
-                        }
+                        console.log('Report popup clicked', { activeTab, hasFinance: !!financeData, hasComm: !!commissionData });
+                        if (!activeData) { alert(`No ${activeTab} data loaded yet. Please click Refresh.`); return; }
+                        setShowReportPopup(true);
                     }}
                     className="flex items-center gap-2 px-5 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
                 >
@@ -207,9 +216,24 @@ export function Reports() {
                                         <tr key={s.employee_name} className="hover:bg-slate-50 transition-colors">
                                             <td className="px-6 py-4 font-bold text-slate-800">{s.employee_name}</td>
                                             <td className="px-6 py-4">
-                                                <span className="bg-slate-100 px-3 py-1 rounded-lg font-bold text-slate-600 text-sm">
-                                                    {s.job_count} jobs
-                                                </span>
+                                                <div className="space-y-2">
+                                                    <span className="bg-slate-100 px-3 py-1 rounded-lg font-bold text-slate-600 text-sm inline-flex">
+                                                        {s.job_count} jobs
+                                                    </span>
+                                                    <div className="space-y-1">
+                                                        {s.jobs.map((job) => (
+                                                            <div key={job.job_id} className="text-xs text-slate-500">
+                                                                <span className="font-bold text-slate-700">#{job.job_id}</span>
+                                                                {' - '}
+                                                                <span>{job.date}</span>
+                                                                {' - '}
+                                                                <span>{job.vehicle_plate}</span>
+                                                                {' - '}
+                                                                <span>{job.services}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4 font-bold text-emerald-600">{fmt(s.amount)}</td>
                                             <td className="px-6 py-4 text-right text-slate-500 font-medium">
@@ -226,6 +250,92 @@ export function Reports() {
                 <div className="bg-white p-20 rounded-3xl border border-dashed border-slate-200 text-center text-slate-400">
                     <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
                     <p>No data found for the selected period.</p>
+                </div>
+            )}
+
+            {showReportPopup && activeData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                    <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-xl bg-accent/15 text-accent flex items-center justify-center">
+                                    <Printer className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="font-bold text-slate-800">{reportTitle}</h2>
+                                    <p className="text-xs text-slate-500">{startDate} to {endDate}</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowReportPopup(false)}
+                                className="h-9 w-9 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center"
+                                aria-label="Close report popup"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                {activeTab === 'finance' && financeData ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                                            <span className="font-semibold text-slate-600">Total Revenue</span>
+                                            <span className="text-2xl font-black text-slate-800">{fmt(financeData.total_revenue)}</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 mb-2">Daily Revenue</p>
+                                            <div className="max-h-56 overflow-y-auto divide-y divide-slate-200">
+                                                {financeData.daily_revenue.map((day) => (
+                                                    <div key={day.date} className="flex justify-between py-2 text-sm">
+                                                        <span className="text-slate-600">{day.date}</span>
+                                                        <span className="font-bold text-slate-800">{fmt(day.amount)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : commissionData ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                                            <span className="font-semibold text-slate-600">Total Commissions</span>
+                                            <span className="text-2xl font-black text-slate-800">{fmt(commissionData.total_commission)}</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700 mb-2">Staff Breakdown</p>
+                                            <div className="max-h-56 overflow-y-auto divide-y divide-slate-200">
+                                                {commissionData.staff_breakdown.map((staff) => (
+                                                    <div key={staff.employee_name} className="py-3 text-sm space-y-2">
+                                                        <div className="grid grid-cols-[1fr_auto_auto] gap-4">
+                                                            <span className="font-semibold text-slate-700">{staff.employee_name}</span>
+                                                            <span className="text-slate-500">{staff.job_count} jobs</span>
+                                                            <span className="font-bold text-slate-800">{fmt(staff.amount)}</span>
+                                                        </div>
+                                                        <div className="space-y-1 pl-3 border-l-2 border-slate-200">
+                                                            {staff.jobs.map((job) => (
+                                                                <div key={job.job_id} className="grid grid-cols-[auto_1fr_auto] gap-3 text-xs text-slate-500">
+                                                                    <span className="font-bold text-slate-700">#{job.job_id}</span>
+                                                                    <span>{job.date} - {job.vehicle_plate} - {job.services}</span>
+                                                                    <span className="font-semibold text-slate-700">{fmt(job.amount)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <button
+                                onClick={handlePrintReport}
+                                className="w-full bg-accent hover:bg-yellow-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <Printer className="w-5 h-5" /> Print Report
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

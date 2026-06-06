@@ -35,6 +35,7 @@ export interface EmployeeSummary {
 
 export interface JobSummary {
     id: number;
+    vehicle_id: number;
     vehicle_plate: string;
     vehicle_type: string;
     category: string;
@@ -42,7 +43,9 @@ export interface JobSummary {
     total_price: number;
     created_at: string;
     paid_at?: string;
+    service_ids: number[];
     services: string[];
+    attendant_ids: number[];
     attendants: string[];
 }
 
@@ -69,5 +72,12 @@ export interface CommissionReport {
         employee_name: string;
         amount: number;
         job_count: number;
+        jobs: {
+            job_id: number;
+            vehicle_plate: string;
+            services: string;
+            date: string;
+            amount: number;
+        }[];
     }[];
 }

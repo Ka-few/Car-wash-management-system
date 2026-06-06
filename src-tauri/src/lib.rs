@@ -33,11 +33,14 @@ pub fn run() {
             update_employee,
             create_job,
             get_jobs,
+            update_job,
             update_job_status,
+            delete_job,
             process_payment,
             get_dashboard_stats,
             get_finance_report,
             get_commission_report,
+            save_pdf_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
